@@ -1,32 +1,49 @@
 import yt_dlp
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, send_file, jsonify
 
 app = Flask(__name__)
 
-# Options to bypass bot detection using a custom User-Agent
-ydl_opts = {
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'format': 'best',  # Best video format
-}
-
-@app.route('/download', methods=['GET'])
-def download_video():
-    video_url = request.args.get('url')
-
-    if not video_url:
-        return jsonify({"error": "URL parameter is required"}), 400
-
+# Function to download video using yt-dlp
+def download_video(video_url):
     try:
-        # Use yt-dlp to extract video info
+        # Configuration for yt-dlp
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'quiet': True
+        }
+
+        # Download the video
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(video_url, download=False)
-            download_url = info_dict['url']  # Direct download URL
-
-        return jsonify({"download_url": download_url})
-    
+            info_dict = ydl.extract_info(video_url, download=True)
+            video_title = info_dict.get('title', None)
+            video_filename = f"downloads/{video_title}.mp4"
+            return video_filename
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return f"Error: {e}"
 
-# Run the Flask app when this script is executed
-if __name__ == '__main__':
+# API endpoint to download the video
+@app.route('/download', methods=['GET'])
+def api_download():
+    video_url = request.args.get('url')
+    if not video_url:
+        return jsonify({'error': 'No URL provided'}), 400
+
+    # Download the video
+    video_filename = download_video(video_url)
+
+    # If there was an error, return the error message
+    if "Error" in video_filename:
+        return jsonify({'error': video_filename}), 500
+
+    # Send the downloaded video file
+    return send_file(video_filename, as_attachment=True)
+
+if __name__ == "__main__":
+    # Ensure the download folder exists
+    if not os.path.exists('downloads'):
+        os.makedirs('downloads')
+    
+    # Run the app
     app.run(debug=True)
